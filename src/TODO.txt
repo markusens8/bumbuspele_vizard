@@ -1,0 +1,6 @@
+1. start menu
+2. izveidot mapi
+3. gudru bumbu generesanas algoritmu
+4. pieskaroties bumbai ta pazud un dabu +1 punktu
+5. padarit speletaju atraku ar laiku
+6. 
