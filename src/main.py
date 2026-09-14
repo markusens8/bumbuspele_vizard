@@ -1,5 +1,6 @@
 from random import randint
 from colorsys import hsv_to_rgb
+from math import sin, sqrt, floor
 
 # viz lietas
 import viz
@@ -13,19 +14,11 @@ PLAYER_SPEED = 7
 
 ui = [] # teksts uz ekrana
 
-def generatePosition():
-	x = randint(-PLATFORM_WIDTH, PLATFORM_WIDTH)/2
-	y = randint(1, 10)
-	z = randint(-PLATFORM_LENGTH, PLATFORM_LENGTH)/2
-	return [x, y, z]
-
 def deleteText():
 	for text in ui:
 		text.remove()
 	ui.clear()
 		
-		
-
 # si klase saka aiziet un stop, kas tagad notie
 class GameState:
 	def __init__(self):
@@ -48,6 +41,7 @@ class GameState:
 				child.remove()
 			deleteText()
 			self.game = Game(lambda: self.changeState("END"))
+			self.game.startGame()
 		elif self.state == "END":
 			self.endMenu()
 		
@@ -56,12 +50,7 @@ class GameState:
 			self.changeState("GAME")
 			
 		elif self.state == "GAME":
-			if key == viz.KEY_F1:
-				viz.MainView.setPosition(0, 30, 0)
-			if key == 'c': 
-				self.game.crouch()
-			if key == ' ':
-				self.game.jump()
+			self.game.handleInput(key)
 		
 	def startMenu(self):
 		title = viz.addText('Cau burvi!', parent=viz.SCREEN, pos=(0.5, 0.9, 0), fontSize=50)
@@ -87,23 +76,27 @@ class GameState:
 class Game:
 	def __init__(self, onGameEnd):
 		self.onGameEnd = onGameEnd
-		self.hue = 0.002
+		
+		self.backgroundHue = 0.001
 		self.score = 0
 		self.timeLeft = GAME_TIME
+		
 		self.balls = []
-		
-		self.crouched = False
-		
-		self.startGame()
-		
+		self.player = Player()
+	
+	def handleInput(self, key):
+		if key == 'c':
+			self.player.crouch()
+	
 	def startGame(self):
-		self.navigator = vizcam.WalkNavigate(moveScale = PLAYER_SPEED, turnScale = 0.5)
-		viz.cam.setHandler(self.navigator)
-		viz.MainView.collision(True)
-		viz.MainView.setPosition(0, 30, 0)
-		viz.MainView.setEuler(0, 0, 0)
-		#viz.MainView.eyeheight(30)
-
+		# grida
+		floor = vizshape.addPlane(size=(PLATFORM_WIDTH, PLATFORM_LENGTH), color=(0, 1, 0))
+		floor.setPosition(0, 0, 0)
+		
+		# Pievieno virziena gaismu, AKA saule
+		dir_light = viz.addDirectionalLight(euler=(0, 90, 0))
+		dir_light.intensity(1.0)
+		
 		# game UI
 		cau = viz.addText('Cau burvi!', parent=viz.SCREEN, pos=(0.75, 0.9, 0))
 		cau.alignment(viz.ALIGN_CENTER_CENTER)
@@ -122,65 +115,97 @@ class Game:
 		
 		ui.extend([cau, self.punkti, self.laiks])
 
-		# Pievieno virziena gaismu, AKA saule
-		dir_light = viz.addDirectionalLight(euler=(0, 90, 0))
-		dir_light.intensity(1.0)
-
-		# grida
-		floor = vizshape.addPlane(size=(PLATFORM_WIDTH, PLATFORM_LENGTH), color=(0, 1, 0))
-		floor.setPosition(0, 0, 0)
-
-		for i in range(500):
-			ball = vizshape.addSphere()
-			position = generatePosition()
-			ball.setPosition(position[0], position[1], position[2])
+		for i in range(100):
+			ball = Ball()
 			self.balls.append(ball)
 			
 		# the callback functions responsible for game looping
-		viz.callback(viz.COLLISION_EVENT, self.checkCollision)
 		self.timer = vizact.ontimer(1, self.updateTime) # speles taimeris
 		self.gameLoop = vizact.onupdate(0, self.runGame)
 		
 	def updateTime(self):
 		self.timeLeft -= 1
-		self.laiks.message(f"time left: {self.timeLeft}")
+		self.laiks.message(f"time left: {floor(self.timeLeft)}")
 		
-	def checkCollision(self, e):
-		if e.object in self.balls:
-			self.score += 1
-			e.object.remove()
-			self.balls.remove(e.object)
-			self.punkti.message(f"make the money: {self.score}")
+	def checkCollision(self):
+		playerPos = viz.MainView.getPosition()
+		for ball in reversed(self.balls):
+			dx = playerPos[0] - ball.position[0]
+			dy = playerPos[1] - ball.position[1]
+			dz = playerPos[2] - ball.position[2]
 			
+			distance = sqrt(dx**2 + dy**2 + dz**2)
+			if distance <= 2: # colision is yes
+				self.score += 1
+				ball.deleteShape()
+				self.balls.remove(ball)
+				self.timeLeft += 0.25
+				self.punkti.message(f"make the money: {self.score}")
+
+	def runGame(self):
+		self.checkCollision()
+		viz.clearcolor(hsv_to_rgb(self.backgroundHue,1,1))
+		self.backgroundHue += 0.002
+		for ball in self.balls:
+			ball.changeColor()
+			ball.makeItBounce()
+
+		if self.timeLeft <= 0:
+			self.endGame()
+			
+	def endGame(self):
+		self.gameLoop.setEnabled(False)
+		self.timer.setEnabled(False)
+		viz.cam.setHandler(None)
+		
+		self.onGameEnd()
+	
+class Player:
+	def __init__(self):
+		self.navigator = vizcam.WalkNavigate(moveScale = PLAYER_SPEED, turnScale = 0.5)
+		viz.cam.setHandler(self.navigator)
+		viz.MainView.collision(True)
+		viz.MainView.setPosition(0, 30, 0)
+		viz.MainView.setEuler(0, 0, 0)
+		#viz.MainView.eyeheight(30)
+		self.crouched = False
+		
 	def crouch(self):
+		print("crouch")
 		if self.crouched:
 			viz.MainView.eyeheight(1.82)
-			self.navigator = vizcam.WalkNavigate(moveScale = PLAYER_SPEED, turnScale = 0.5)
+			#self.navigator = vizcam.WalkNavigate(moveScale = PLAYER_SPEED, turnScale = 0.5)
 			self.crouched = False
 		else:
 			viz.MainView.eyeheight(0.1)
-			self.navigator = vizcam.WalkNavigate(moveScale = PLAYER_SPEED - 6, turnScale = 0.5)
+			#self.navigator = vizcam.WalkNavigate(moveScale = PLAYER_SPEED - 6, turnScale = 0.5)
 			self.crouched = True
 	
-	def jump(self):
-		pos = viz.MainView.getPosition()
-		viz.MainView.setPosition(pos[0], pos[1]+3, pos[2])
+class Ball:
+	def __init__(self):
+		self.position = self.generatePosition()
+		self.hue = 0.5
+		
+		# the interface used to change the physical shape properties
+		self.shape = vizshape.addSphere()
+		self.shape.setPosition(self.position[0], self.position[1], self.position[2])
+		
+	def changeColor(self):
+		self.hue += 0.002
+		self.shape.color(hsv_to_rgb(self.hue, 1, 1))
 
-			
-	def runGame(self):
-		viz.clearcolor(hsv_to_rgb(self.hue,1,1))
-		self.hue += 0.001
-		for ball in self.balls:
-			ball.color(hsv_to_rgb(self.hue+0.5,1,1))
-			
-		# spele beidzas
-		if self.timeLeft <= 0:
-			viz.callback(viz.COLLISION_EVENT, None)
-			self.gameLoop.setEnabled(False)
-			self.timer.setEnabled(False)
-			viz.cam.setHandler(None)
-			
-			self.onGameEnd()
+	def makeItBounce(self):
+		self.shape.setPosition(self.position[0], self.position[1] + abs(sin(viz.tick() * 7)), self.position[2])
+		
+	@staticmethod
+	def generatePosition():
+		x = randint(-PLATFORM_WIDTH, PLATFORM_WIDTH)/2
+		y = randint(1, 3)
+		z = randint(-PLATFORM_LENGTH, PLATFORM_LENGTH)/2
+		return [x, y, z]
+		
+	def deleteShape(self):
+		self.shape.remove()
 
 if __name__ == "__main__":
 	game = GameState()
