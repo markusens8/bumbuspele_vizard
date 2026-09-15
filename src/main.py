@@ -9,8 +9,10 @@ import vizcam
 
 PLATFORM_WIDTH = 100
 PLATFORM_LENGTH = 100
-GAME_TIME = 15 #in seconds
+GAME_TIME = 10 #in seconds
 PLAYER_SPEED = 7
+N_BALLS = 500
+N_SPECIAL_BALLS = 20
 
 ui = [] # teksts uz ekrana
 
@@ -29,26 +31,45 @@ class GameState:
 		viz.callback(viz.KEYDOWN_EVENT, self.handleInput)
 		
 		self.state = ""
-		self.changeState("GAME")
+		self.changeState("START_MENU")
 		
 	def changeState(self, newState):
 		self.state = newState
+		deleteText()
+		
 		if self.state == "START_MENU":
 			self.startMenu()
+			
+			
+		elif self.state == "2P_GAME":
+			self.p1Score = 0
+			self.P2Score = 0
+			self.game = Game(lambda: self.changeState("P1_END"))
+			self.game.startGame()
+			
+		elif self.state == "P1_END":
+			self.p1Score = self.game.score
+			self.game = Game(lambda: self.changeState("P2_END"))
+			self.game.startGame()
+			
+		elif self.state == "P2_END":
+			self.p2Score = self.game.score
+			self.endMenu2P()
+	
+	
 		elif self.state == "GAME":
-			# izdzes speles laukumu pirms renderet jauno
-			for child in viz.MainScene.getChildren():
-				child.remove()
-			deleteText()
 			self.game = Game(lambda: self.changeState("END"))
 			self.game.startGame()
+			
+			
 		elif self.state == "END":
 			self.endMenu()
 		
 	def handleInput(self, key):
-		if key == viz.KEY_RETURN and (self.state == "START_MENU" or self.state == "END"):
-			self.changeState("GAME")
-			
+		if self.state in ["START_MENU", "END", "2P_END"]:
+				if key == viz.KEY_RETURN: self.changeState("GAME")
+				if key == viz.KEY_SHIFT_L: self.changeState("2P_GAME")
+		
 		elif self.state == "GAME":
 			self.game.handleInput(key)
 		
@@ -56,18 +77,30 @@ class GameState:
 		title = viz.addText('Cau burvi!', parent=viz.SCREEN, pos=(0.5, 0.9, 0), fontSize=50)
 		title.alignment(viz.ALIGN_CENTER_CENTER)
 
-		press = viz.addText('spied ENTER lai turpinatu', parent=viz.SCREEN, pos=(0.5, 0.5, 0), fontSize=50)
+		press = viz.addText('spied ENTER lai turpinatu \n shift prieks 2p', parent=viz.SCREEN, pos=(0.5, 0.5, 0), fontSize=50)
 		press.alignment(viz.ALIGN_CENTER_CENTER)
 		
 		ui.extend([title, press])
 	
 	def endMenu(self):
-		end = viz.addText("The game has concluded \n press enter on your keyboard to play again", parent=viz.SCREEN, pos=(0.5, 0.5, 0))
+		end = viz.addText("The game has concluded \n press enter on yo keyboard to play again", parent=viz.SCREEN, pos=(0.5, 0.5, 0), fontSize=54)
 		end.alignment(viz.ALIGN_CENTER_CENTER)
-		end.fontSize(54)
 		end.color(0, 0, 0)
 		
+		score = viz.addText(f"Yo score: {self.game.score}", parent=viz.SCREEN, pos=(0.5, 0.1, 0))
+		
 		ui.append(end)
+		
+	def endMenu2P(self):
+		p1Score = viz.addText(f"player 1 score: {self.p1Score}", parent=viz.SCREEN, pos=(0.2, 0.9, 0), fontSize=50)
+		p2Score = viz.addText(f"player 2 score: {self.p2Score}", parent=viz.SCREEN, pos=(0.7, 0.9, 0), fontSize=50)
+		end = viz.addText("PRESS enter or shift on yo keyboard", parent=viz.SCREEN, pos=(0.5, 0.5, 0), fontSize=50)
+		
+		p1Score.alignment(viz.ALIGN_CENTER_CENTER)
+		p2Score.alignment(viz.ALIGN_CENTER_CENTER)
+		end.alignment(viz.ALIGN_CENTER_CENTER)
+		
+
 
 # Note to self - JAPARLIEK GEIM LOOPS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1111111!!!!
 # jaizbeids ir:
@@ -88,7 +121,10 @@ class Game:
 		if key == 'c':
 			self.player.crouch()
 	
+	
+	
 	def startGame(self):
+		self.clearArea();
 		# grida
 		floor = vizshape.addPlane(size=(PLATFORM_WIDTH, PLATFORM_LENGTH), color=(0, 1, 0))
 		floor.setPosition(0, 0, 0)
@@ -98,25 +134,25 @@ class Game:
 		dir_light.intensity(1.0)
 		
 		# game UI
-		cau = viz.addText('Cau burvi!', parent=viz.SCREEN, pos=(0.75, 0.9, 0))
+		cau = viz.addText('Cau burvi!', parent=viz.SCREEN, pos=(0.75, 0.9, 0), fontSize=54)
 		cau.alignment(viz.ALIGN_CENTER_CENTER)
-		cau.fontSize(54)
 		cau.color(viz.YELLOW)
 		
-		self.punkti = viz.addText('make the money: 0', parent=viz.SCREEN, pos=(0.25, 0.9, 0))
+		self.punkti = viz.addText('make the money: 0', parent=viz.SCREEN, pos=(0.25, 0.9, 0), fontSize=54)
 		self.punkti.alignment(viz.ALIGN_CENTER_CENTER)
-		self.punkti.fontSize(54)
 		self.punkti.color(viz.YELLOW)
 		
-		self.laiks = viz.addText(f"time left: {self.timeLeft}", parent=viz.SCREEN, pos=(0.6, 0.7, 0))
+		self.laiks = viz.addText(f"time left: {self.timeLeft}", parent=viz.SCREEN, pos=(0.6, 0.7, 0), fontSize=54)
 		self.laiks.alignment(viz.ALIGN_CENTER_CENTER)
-		self.laiks.fontSize(54)
 		self.laiks.color(viz.YELLOW)
 		
 		ui.extend([cau, self.punkti, self.laiks])
 
-		for i in range(100):
-			ball = Ball()
+		for i in range(N_BALLS):
+			ball = Ball(False)
+			self.balls.append(ball)
+		for i in range (N_SPECIAL_BALLS):
+			ball = Ball(True)
 			self.balls.append(ball)
 			
 		# the callback functions responsible for game looping
@@ -136,10 +172,9 @@ class Game:
 			
 			distance = sqrt(dx**2 + dy**2 + dz**2)
 			if distance <= 2: # colision is yes
-				self.score += 1
+				self.score += ball.points
 				ball.deleteShape()
 				self.balls.remove(ball)
-				self.timeLeft += 0.25
 				self.punkti.message(f"make the money: {self.score}")
 
 	def runGame(self):
@@ -159,6 +194,12 @@ class Game:
 		viz.cam.setHandler(None)
 		
 		self.onGameEnd()
+		
+	@staticmethod
+	# notira speles objektus
+	def clearArea():
+		for child in viz.MainScene.getChildren():
+			child.remove()
 	
 class Player:
 	def __init__(self):
@@ -182,8 +223,10 @@ class Player:
 			self.crouched = True
 	
 class Ball:
-	def __init__(self):
+	def __init__(self, special):
 		self.position = self.generatePosition()
+		self.points = 5 if special else 1 # this means the ball is special
+		self.hueChange = 0 if special else 0.002
 		self.hue = 0.5
 		
 		# the interface used to change the physical shape properties
@@ -191,7 +234,7 @@ class Ball:
 		self.shape.setPosition(self.position[0], self.position[1], self.position[2])
 		
 	def changeColor(self):
-		self.hue += 0.002
+		self.hue += self.hueChange
 		self.shape.color(hsv_to_rgb(self.hue, 1, 1))
 
 	def makeItBounce(self):
